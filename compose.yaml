@@ -1,0 +1,123 @@
+name: ticketing-education
+services:
+  postgres:
+    network_mode: bridge
+    image: postgres:18.3
+    environment:
+      POSTGRES_USER: ticketing_admin
+      POSTGRES_PASSWORD: ticketing-admin-local
+      POSTGRES_DB: postgres
+    ports:
+      - "127.0.0.1:${TICKETING_PG_PORT:-56432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/01-databases.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U ticketing_admin -d postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  redis:
+    network_mode: bridge
+    image: redis:8.10.1-alpine
+    command: [redis-server, --appendonly, "yes", --maxmemory, 128mb, --maxmemory-policy, noeviction]
+    ports:
+      - "127.0.0.1:${TICKETING_REDIS_PORT:-57389}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  rabbitmq:
+    network_mode: bridge
+    image: rabbitmq:4.3.6-management-alpine
+    hostname: ticketing-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ticketing
+      RABBITMQ_DEFAULT_PASS: ticketing-local
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "+S 2:2 -rabbit disk_free_limit 50000000"
+    ports:
+      - "127.0.0.1:${TICKETING_AMQP_PORT:-56672}:5672"
+      - "127.0.0.1:${TICKETING_RABBIT_UI_PORT:-56673}:15672"
+    volumes:
+      - rabbit-data:/var/lib/rabbitmq
+    healthcheck:
+      test: [CMD, rabbitmq-diagnostics, -q, check_running]
+      interval: 3s
+      timeout: 10s
+      retries: 40
+  kafka:
+    network_mode: bridge
+    image: apache/kafka:4.3.1
+    hostname: ticketing-kafka
+    environment:
+      CLUSTER_ID: vsyMUUPKRNOzp4i_xOmUGQ
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: HOST://0.0.0.0:9092,INTERNAL://0.0.0.0:19092,CONTROLLER://0.0.0.0:9093
+      KAFKA_ADVERTISED_LISTENERS: HOST://127.0.0.1:${TICKETING_KAFKA_PORT:-60092},INTERNAL://127.0.0.1:19092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: HOST:PLAINTEXT,INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@127.0.0.1:9093
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_LOG_RETENTION_MS: -1
+      KAFKA_LOG_RETENTION_BYTES: -1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx512m
+    ports:
+      - "127.0.0.1:${TICKETING_KAFKA_PORT:-60092}:9092"
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      test: [CMD-SHELL, "/opt/kafka/bin/kafka-topics.sh --bootstrap-server 127.0.0.1:19092 --list >/dev/null"]
+      interval: 5s
+      timeout: 15s
+      retries: 40
+      start_period: 10s
+  collector:
+    image: otel/opentelemetry-collector-contrib:0.140.0
+    command: [--config=/etc/otelcol/config.yaml]
+    networks: [observability]
+    ports: ["127.0.0.1:${OTEL_HTTP_PORT:-34318}:4318"]
+    volumes: ["./infra/observability/collector.yaml:/etc/otelcol/config.yaml:ro"]
+  jaeger:
+    image: cr.jaegertracing.io/jaegertracing/jaeger:2.21.0
+    networks: [observability]
+    ports: ["127.0.0.1:${JAEGER_UI_PORT:-36686}:16686"]
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    networks: [observability]
+    ports: ["127.0.0.1:${PROMETHEUS_PORT:-39090}:9090"]
+    volumes: ["./infra/observability/prometheus.yaml:/etc/prometheus/prometheus.yml:ro", "prometheus-data:/prometheus"]
+  grafana:
+    image: grafana/grafana:12.2.1
+    networks: [observability]
+    ports: ["127.0.0.1:${GRAFANA_PORT:-3300}:3000"]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./infra/observability/grafana/datasources.yaml:/etc/grafana/provisioning/datasources/ticketing.yaml:ro
+      - ./infra/observability/grafana/dashboards.yaml:/etc/grafana/provisioning/dashboards/ticketing.yaml:ro
+      - ./infra/observability/grafana/ticketing.json:/var/lib/grafana/dashboards/ticketing.json:ro
+      - grafana-data:/var/lib/grafana
+
+volumes:
+  postgres-data:
+  redis-data:
+  rabbit-data:
+  kafka-data:
+  prometheus-data:
+  grafana-data:
+networks:
+  observability:
+    ipam:
+      config:
+        - subnet: ${OBSERVABILITY_SUBNET:-10.203.42.0/24}

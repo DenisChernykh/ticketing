@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: Ticketing
+    folder: Ticketing
+    type: file
+    options:
+      path: /var/lib/grafana/dashboards

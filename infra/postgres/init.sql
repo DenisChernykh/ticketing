@@ -1,0 +1,14 @@
+CREATE ROLE sales LOGIN PASSWORD 'sales-local';
+CREATE ROLE fulfillment LOGIN PASSWORD 'fulfillment-local';
+CREATE ROLE analytics LOGIN PASSWORD 'analytics-local';
+CREATE DATABASE ticketing_sales OWNER sales;
+CREATE DATABASE ticketing_fulfillment OWNER fulfillment;
+CREATE DATABASE ticketing_analytics OWNER analytics;
+REVOKE CONNECT ON DATABASE ticketing_sales, ticketing_fulfillment, ticketing_analytics FROM PUBLIC;
+GRANT CONNECT ON DATABASE ticketing_sales TO sales;
+GRANT CONNECT ON DATABASE ticketing_fulfillment TO fulfillment;
+GRANT CONNECT ON DATABASE ticketing_analytics TO analytics;
+CREATE ROLE payment_mock LOGIN PASSWORD 'payment_mock-local';
+CREATE DATABASE ticketing_payment_mock OWNER payment_mock;
+REVOKE CONNECT ON DATABASE ticketing_payment_mock FROM PUBLIC;
+GRANT CONNECT ON DATABASE ticketing_payment_mock TO payment_mock;

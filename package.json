@@ -1,0 +1,41 @@
+{
+  "name": "ticketing-education",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@11.15.1",
+  "engines": {
+    "node": ">=24 <25",
+    "pnpm": ">=11 <12"
+  },
+  "scripts": {
+    "build": "pnpm -r --filter '@ticketing/*' build",
+    "check:architecture": "node scripts/check-architecture.cjs",
+    "check": "pnpm build && pnpm check:architecture && node --test test/unit/*.test.cjs",
+    "infra:up": "docker compose up -d --wait",
+    "infra:down": "docker compose down",
+    "infra:status": "docker compose ps",
+    "migrate": "pnpm build && pnpm provision && node scripts/migrate.cjs",
+    "seed": "pnpm build && node scripts/seed.cjs",
+    "dev": "pnpm infra:up && pnpm build && pnpm provision && node scripts/migrate.cjs && node scripts/seed.cjs && pnpm upgrade:state && node scripts/dev.cjs",
+    "start": "node scripts/dev.cjs",
+    "test": "pnpm check && pnpm test:integration",
+    "test:integration": "node --test --test-concurrency=1 test/integration/*.test.cjs && pnpm --filter @ticketing/fulfillment verify && pnpm --filter @ticketing/analytics verify",
+    "replay": "node apps/analytics/dist/bootstrap/replay.js",
+    "redrive": "node apps/fulfillment/dist/bootstrap/redrive.js",
+    "provision": "node scripts/provision.cjs",
+    "upgrade:state": "node scripts/upgrade-state.cjs"
+  },
+  "dependencies": {
+    "@ticketing/core": "workspace:*",
+    "@ticketing/contracts": "workspace:*",
+    "amqplib": "0.10.9",
+    "kafkajs": "2.2.4",
+    "pg": "8.23.0",
+    "redis": "6.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.5",
+    "@types/pg": "8.23.1",
+    "typescript": "5.9.3"
+  }
+}
